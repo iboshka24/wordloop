@@ -244,8 +244,10 @@
   /* ---------------- pre-filter & pair parser ---------------- */
 
   function detectScript(text) {
-    var cyr = (text.match(/[\u0400-\u04FF]/g) || []).length;
-    var lat = (text.match(/[a-zA-Z]/g) || []).length;
+    if (!text) return null;
+    var str = String(text);
+    var cyr = (str.match(/[\u0400-\u04FF]/g) || []).length;
+    var lat = (str.match(/[a-zA-Z]/g) || []).length;
     if (cyr > lat && cyr >= 2) return 'ru';
     if (lat > cyr && lat >= 2) return 'en';
     return null;
@@ -715,8 +717,16 @@
   }
 
   function updateRows() {
-    $('rowHidden').hidden = state.revealed;
-    $('rowShown').hidden = !state.revealed;
+    var rowH = $('rowHidden');
+    var rowS = $('rowShown');
+    if (rowH) {
+      rowH.hidden = state.revealed;
+      rowH.style.display = state.revealed ? 'none' : '';
+    }
+    if (rowS) {
+      rowS.hidden = !state.revealed;
+      rowS.style.display = !state.revealed ? 'none' : '';
+    }
   }
 
   function reveal() {
@@ -808,12 +818,92 @@
     else msg = 'Всё по плану: забыл → карточка перевернулась → слово вернулось в очередь.';
     $('summaryMsg').textContent = msg;
 
-    $('summary').hidden = false;
+    var summ = $('summary');
+    if (summ) {
+      summ.hidden = false;
+      summ.style.display = '';
+    }
   }
 
   function hideSummary() {
-    $('summary').hidden = true;
+    var summ = $('summary');
+    if (summ) {
+      summ.hidden = true;
+      summ.style.display = 'none';
+    }
     state.startedAt = Date.now() - state.elapsed * 1000;
+  }
+
+  function startNewSet() {
+    // 1. Остановка таймера тренировки
+    clearInterval(state.timer);
+    state.timer = null;
+
+    // 2. Закрытие оверлея сводки
+    var summ = $('summary');
+    if (summ) {
+      summ.hidden = true;
+      summ.style.display = 'none';
+    }
+
+    // 3. Сброс runtime состояния тренировки
+    state.cards = [];
+    state.roundQueue = [];
+    state.roundTotal = 0;
+    state.current = null;
+    state.revealed = false;
+    state.round = 1;
+    state.known = 0;
+    state.forgot = 0;
+    state.answers = 0;
+    state.startedAt = 0;
+    state.elapsed = 0;
+    state.cancelled = false;
+
+    // 4. Сброс UI индикаторов и карточек тренировки
+    var topPill = $('topPill');
+    if (topPill) {
+      topPill.hidden = true;
+      topPill.textContent = '';
+    }
+    var card = $('card');
+    if (card) {
+      card.classList.remove('flipped', 'pop');
+    }
+    if ($('cardWord')) $('cardWord').textContent = '—';
+    if ($('cardTrans')) $('cardTrans').textContent = '—';
+    if ($('cardHint')) $('cardHint').textContent = '';
+    if ($('stRound')) $('stRound').textContent = '1';
+    if ($('stKnown')) $('stKnown').textContent = '0';
+    if ($('stForgot')) $('stForgot').textContent = '0';
+    if ($('stAcc')) $('stAcc').textContent = '—';
+    if ($('stTime')) $('stTime').textContent = '0:00';
+    if ($('stLeft')) $('stLeft').textContent = '0';
+
+    // 5. Очистка сохранённой сессии (так как пользователь начал новый набор)
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch (e) {}
+    if ($('resumeBox')) $('resumeBox').hidden = true;
+
+    // 6. Переход на экран настройки
+    show('screen-setup');
+
+    // 7. Сброс истории браузера при необходимости
+    try {
+      if (window.history.state && window.history.state.screen === 'train') {
+        window.history.replaceState({ screen: 'setup' }, '');
+      }
+    } catch (e) {}
+
+    // 8. Фокус на поле ввода для удобного ввода новых слов
+    var input = $('input');
+    if (input) {
+      input.focus();
+      input.select();
+    }
+
+    toast('Введи или выбери новый набор слов ✍️', 'ok', 2200);
   }
 
   function statsText() {
@@ -1032,14 +1122,13 @@
       toast('Направление: ' + ({ mixed: 'смешанное', fwd: 'слово → перевод', rev: 'перевод → слово' })[next], 'ok', 1800);
     });
 
-    /* Summary buttons */
+    /* Summary and tools buttons */
     $('btnContinue').addEventListener('click', hideSummary);
-    $('btnNewSet').addEventListener('click', function () {
-      hideSummary();
-      clearInterval(state.timer);
-      $('topPill').hidden = true;
-      show('screen-setup');
-    });
+    $('btnNewSet').addEventListener('click', startNewSet);
+    var btnNewSetTrain = $('btnNewSetTrain');
+    if (btnNewSetTrain) {
+      btnNewSetTrain.addEventListener('click', startNewSet);
+    }
     $('btnCopyStats').addEventListener('click', async function () {
       try {
         await navigator.clipboard.writeText(statsText());

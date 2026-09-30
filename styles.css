@@ -14,6 +14,7 @@
 }
 
 *{box-sizing:border-box}
+[hidden]{display:none !important}
 html,body{height:100%}
 body{
   margin:0;
@@ -196,10 +197,12 @@ textarea#input:focus{border-color:rgba(139,92,246,.6);box-shadow:0 0 0 4px rgba(
 .hint-keys{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;color:var(--muted);font-size:13px}
 kbd{background:rgba(255,255,255,.1);border:1px solid var(--stroke);border-bottom-width:2px;border-radius:7px;padding:3px 8px;font-size:12px;font-family:inherit;color:#dfe3f5}
 .answer-row{display:flex;gap:12px;width:min(620px,100%)}
+.answer-row[hidden]{display:none !important}
 .stage-tools{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin-top:6px}
 
 /* ---------- summary ---------- */
 .overlay{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(4,4,10,.82);backdrop-filter:blur(12px);padding:20px;animation:up .3s}
+.overlay[hidden]{display:none !important}
 .summary-card{width:min(460px,100%);text-align:center;padding:32px 26px}
 .summary-card .emoji{font-size:44px}
 .summary-card h2{font-size:24px;margin:10px 0 18px}

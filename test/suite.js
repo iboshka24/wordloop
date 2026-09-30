@@ -158,5 +158,110 @@ function mockRes() {
   // Restore env key if existed
   if (oldKey) process.env.OPENAI_API_KEY = oldKey;
 
+  // Test 10: detectScript safe edge cases
+  assert.strictEqual(detectScript(null), null);
+  assert.strictEqual(detectScript(undefined), null);
+  assert.strictEqual(detectScript(''), null);
+  assert.strictEqual(detectScript(123), null);
+  console.log('✓ detectScript safely handles null, undefined, empty, and numeric inputs');
+
+  // Test 11: CSS rules enforce display:none !important on hidden elements
+  const cssCode = fs.readFileSync(require.resolve('../styles.css'), 'utf8');
+  assert(cssCode.includes('[hidden]{display:none !important}'), 'Must have [hidden]{display:none !important}');
+  assert(cssCode.includes('.overlay[hidden]{display:none !important}'), 'Must have .overlay[hidden]{display:none !important}');
+  assert(cssCode.includes('.answer-row[hidden]{display:none !important}'), 'Must have .answer-row[hidden]{display:none !important}');
+  console.log('✓ styles.css enforces display:none !important for [hidden], .overlay[hidden], and .answer-row[hidden]');
+
+  // Test 12: HTML buttons and ID alignment
+  const htmlContent = fs.readFileSync(require.resolve('../index.html'), 'utf8');
+  assert(htmlContent.includes('id="btnNewSet"'), 'index.html must have btnNewSet');
+  assert(htmlContent.includes('id="btnNewSetTrain"'), 'index.html must have btnNewSetTrain in stage-tools');
+  const jsIds = [...appCode.matchAll(/\$\(["\x27]([^"\x27]+)["\x27]\)/g)].map(m => m[1]);
+  for (const id of jsIds) {
+    assert(htmlContent.includes(`id="${id}"`), `Element id "${id}" from app.js must exist in index.html`);
+  }
+  console.log('✓ index.html has btnNewSet and btnNewSetTrain, and all JS referenced IDs match HTML elements');
+
+  // Test 13: DOM simulation of startNewSet / btnNewSet click
+  const domListeners = {};
+  const mockElements = {};
+  const classStore = {};
+  function makeMockElement(id) {
+    classStore[id] = new Set();
+    return {
+      id,
+      hidden: false,
+      style: {},
+      textContent: '',
+      value: 'sample words',
+      classList: {
+        add: (c) => classStore[id].add(c),
+        remove: (c) => classStore[id].delete(c),
+        toggle: (c, val) => val ? classStore[id].add(c) : classStore[id].delete(c),
+        contains: (c) => classStore[id].has(c)
+      },
+      addEventListener: (e, fn) => {
+        domListeners[id + ':' + e] = fn;
+      },
+      appendChild: () => {},
+      focus: () => {},
+      select: () => {},
+      querySelectorAll: () => []
+    };
+  }
+
+  const idRegex = /id="([^"]+)"/g;
+  let idMatch;
+  while ((idMatch = idRegex.exec(htmlContent)) !== null) {
+    mockElements[idMatch[1]] = makeMockElement(idMatch[1]);
+  }
+
+  const storage = {
+    store: { 'wordloop.session': JSON.stringify({ cards: [1, 2, 3] }) },
+    getItem(k) { return this.store[k] || null; },
+    setItem(k, v) { this.store[k] = v; },
+    removeItem(k) { delete this.store[k]; }
+  };
+
+  const windowObj = {
+    addEventListener: (e, fn) => { domListeners['window:' + e] = fn; },
+    history: { pushState: () => {}, replaceState: () => {}, state: { screen: 'train' } },
+    scrollTo: () => {},
+    speechSynthesis: { cancel: () => {}, speak: () => {} }
+  };
+
+  const docObj = {
+    getElementById: (id) => mockElements[id] || null,
+    querySelectorAll: (sel) => {
+      if (sel === '.screen') {
+        return [mockElements['screen-setup'], mockElements['screen-loading'], mockElements['screen-train']].filter(Boolean);
+      }
+      return [];
+    },
+    addEventListener: (e, fn) => { domListeners['doc:' + e] = fn; },
+    createElement: (tag) => makeMockElement('created-' + tag)
+  };
+
+  const appSandbox = new Function('window', 'document', 'localStorage', 'navigator', appCode);
+  appSandbox(windowObj, docObj, storage, { clipboard: { writeText: async () => {}, readText: async () => '' } });
+
+  if (domListeners['doc:DOMContentLoaded']) domListeners['doc:DOMContentLoaded']();
+
+  assert(typeof domListeners['btnNewSet:click'] === 'function', 'btnNewSet must have click listener');
+  assert(typeof domListeners['btnNewSetTrain:click'] === 'function', 'btnNewSetTrain must have click listener');
+
+  mockElements['summary'].hidden = false;
+  mockElements['summary'].style.display = 'grid';
+  mockElements['topPill'].hidden = false;
+
+  domListeners['btnNewSet:click']();
+
+  assert.strictEqual(mockElements['summary'].hidden, true, 'summary overlay must be hidden');
+  assert.strictEqual(mockElements['summary'].style.display, 'none', 'summary overlay display must be none');
+  assert.strictEqual(mockElements['topPill'].hidden, true, 'topPill must be hidden');
+  assert.strictEqual(storage.getItem('wordloop.session'), null, 'SESSION_KEY must be cleaned from localStorage');
+  assert.strictEqual(classStore['screen-setup'].has('active'), true, 'screen-setup must be active');
+  console.log('✓ btnNewSet click handler properly hides overlay, purges stored session, and activates setup screen');
+
   console.log('\n--- ALL TESTS PASSED SUCCESSFULLY! ---');
 })();
