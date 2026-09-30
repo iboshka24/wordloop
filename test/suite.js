@@ -223,11 +223,15 @@ function mockRes() {
     removeItem(k) { delete this.store[k]; }
   };
 
+  let speechCancelCount = 0;
   const windowObj = {
     addEventListener: (e, fn) => { domListeners['window:' + e] = fn; },
     history: { pushState: () => {}, replaceState: () => {}, state: { screen: 'train' } },
     scrollTo: () => {},
-    speechSynthesis: { cancel: () => {}, speak: () => {} }
+    speechSynthesis: {
+      cancel: () => { speechCancelCount++; },
+      speak: () => {}
+    }
   };
 
   const docObj = {
@@ -254,6 +258,7 @@ function mockRes() {
   mockElements['summary'].style.display = 'grid';
   mockElements['topPill'].hidden = false;
 
+  const preSpeechCancel = speechCancelCount;
   domListeners['btnNewSet:click']();
 
   assert.strictEqual(mockElements['summary'].hidden, true, 'summary overlay must be hidden');
@@ -261,7 +266,42 @@ function mockRes() {
   assert.strictEqual(mockElements['topPill'].hidden, true, 'topPill must be hidden');
   assert.strictEqual(storage.getItem('wordloop.session'), null, 'SESSION_KEY must be cleaned from localStorage');
   assert.strictEqual(classStore['screen-setup'].has('active'), true, 'screen-setup must be active');
-  console.log('✓ btnNewSet click handler properly hides overlay, purges stored session, and activates setup screen');
+  assert(speechCancelCount > preSpeechCancel, 'startNewSet must cancel speech synthesis');
+  console.log('✓ btnNewSet click handler properly hides overlay, cancels speech, purges stored session, and activates setup screen');
+
+  // Test 14: btnNewSetTrain in stage-tools resets training, cleans storage, and activates setup screen
+  domListeners['btnDemo:click']();
+  assert.strictEqual(classStore['screen-train'].has('active'), true, 'training screen must be active');
+  assert.strictEqual(mockElements['topPill'].hidden, false, 'topPill must be shown in training');
+  assert(storage.getItem('wordloop.session') !== null, 'training session must be stored in localStorage');
+
+  domListeners['btnNewSetTrain:click']();
+  assert.strictEqual(classStore['screen-setup'].has('active'), true, 'setup screen must be active after btnNewSetTrain');
+  assert.strictEqual(mockElements['topPill'].hidden, true, 'topPill must be hidden');
+  assert.strictEqual(storage.getItem('wordloop.session'), null, 'SESSION_KEY must be cleaned after btnNewSetTrain');
+  console.log('✓ btnNewSetTrain in stage-tools properly resets training state, purges session, and activates setup screen');
+
+  // Test 15: Race condition immunity: answering a card followed immediately by "Новый набор" aborts pending nextCard timer
+  domListeners['btnDemo:click']();
+  assert.strictEqual(classStore['screen-train'].has('active'), true);
+  domListeners['btnKnew:click'](); // Schedules 180ms nextCardTimer
+  domListeners['btnNewSetTrain:click'](); // Immediately resets to new set
+
+  await new Promise(r => setTimeout(r, 220)); // Wait for timer duration to pass
+
+  assert.strictEqual(classStore['screen-setup'].has('active'), true, 'screen-setup must remain active after delay');
+  assert.strictEqual(mockElements['stRound'].textContent, '1', 'stRound must remain 1 and not be incremented by dangling callback');
+  assert.strictEqual(mockElements['cardWord'].textContent, '—', 'cardWord must remain cleared');
+  console.log('✓ Race condition immunity verified: answering card followed by new set properly aborts pending transition without state corruption');
+
+  // Test 16: showSummary cancels active speech playback
+  domListeners['btnDemo:click']();
+  const cancelCountBeforeExit = speechCancelCount;
+  domListeners['btnExit:click']();
+  assert.strictEqual(mockElements['summary'].hidden, false, 'summary overlay must be shown on exit');
+  assert(speechCancelCount > cancelCountBeforeExit, 'showSummary must cancel active speech synthesis');
+  console.log('✓ showSummary cancels active speech playback to silence audio when exiting to summary');
 
   console.log('\n--- ALL TESTS PASSED SUCCESSFULLY! ---');
+  process.exit(0); // mock-сервер держит event loop — завершаемся явно
 })();

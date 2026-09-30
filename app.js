@@ -641,8 +641,14 @@
 
   /* ---------------- training ---------------- */
 
+  var nextCardTimer = null;
+
   function startTraining(cards, resume) {
     if (!cards || !cards.length) { toast('Не найдено ни одного слова 🤔', 'err'); return; }
+
+    state.cancelled = false;
+    clearTimeout(nextCardTimer);
+    nextCardTimer = null;
 
     state.cards = cards.map(function (c, i) {
       return { id: i, original: c.original, translation: c.translation, hint: c.hint || '', streak: 0, fails: 0 };
@@ -669,6 +675,10 @@
   }
 
   function nextCard(first) {
+    if (state.cancelled || !state.cards || !state.cards.length) return;
+    var trainScreen = $('screen-train');
+    if (trainScreen && !trainScreen.classList.contains('active')) return;
+
     if (!state.roundQueue.length) {
       state.round++;
       // В новом раунде забытые/сложные слова идут первыми
@@ -769,7 +779,11 @@
 
     state.revealed = false;
     $('card').classList.remove('flipped');
-    setTimeout(function () { nextCard(false); }, 180);
+    clearTimeout(nextCardTimer);
+    nextCardTimer = setTimeout(function () {
+      nextCardTimer = null;
+      nextCard(false);
+    }, 180);
     renderStats();
   }
 
@@ -799,6 +813,15 @@
   /* ---------------- summary ---------------- */
 
   function showSummary() {
+    if (nextCardTimer) {
+      clearTimeout(nextCardTimer);
+      nextCardTimer = null;
+      nextCard(false);
+    }
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+
     state.elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
     var acc = state.answers ? Math.round((state.known / state.answers) * 100) : 0;
     var mastered = state.cards.filter(function (c) { return c.streak >= 2 && c.fails === 0; }).length;
@@ -835,9 +858,11 @@
   }
 
   function startNewSet() {
-    // 1. Остановка таймера тренировки
+    // 1. Остановка таймеров тренировки и перехода к следующей карточке
     clearInterval(state.timer);
     state.timer = null;
+    clearTimeout(nextCardTimer);
+    nextCardTimer = null;
 
     // 2. Закрытие оверлея сводки
     var summ = $('summary');
@@ -916,7 +941,7 @@
         try { input.select(); } catch (e2) {}
       }
     }
-    updateInputStat();
+    updateInputStat(true);
 
     toast('Введи или выбери новый набор слов ✍️', 'ok', 2200);
   }
@@ -981,7 +1006,7 @@
       if (s && s.cards && s.cards.length) $('resumeBox').hidden = false;
     } catch (e) {}
 
-    updateInputStat();
+    updateInputStat(true);
 
     /* setup events */
     $('input').addEventListener('input', updateInputStat);
@@ -1009,7 +1034,7 @@
         var key = btn.dataset.preset;
         if (PRESETS[key]) {
           $('input').value = PRESETS[key].join('\n');
-          updateInputStat();
+          updateInputStat(true);
           toast('Загружен набор «' + btn.textContent + '»', 'ok', 1800);
         }
       });
@@ -1101,8 +1126,12 @@
 
     $('logoHome').addEventListener('click', function (e) {
       e.preventDefault();
-      if ($('screen-train').classList.contains('active')) showSummary();
-      else show('screen-setup');
+      if ($('screen-train').classList.contains('active')) {
+        showSummary();
+      } else {
+        state.cancelled = true;
+        show('screen-setup');
+      }
     });
 
     /* Card face speak buttons */
@@ -1197,9 +1226,9 @@
   }
 
   var statTimer = null;
-  function updateInputStat() {
+  function updateInputStat(silent) {
     clearTimeout(statTimer);
-    statTimer = setTimeout(function () {
+    var applyStats = function () {
       var val = $('input').value;
       var p = parseInput(val);
       $('inputStat').textContent = p.items.length + ' ' + plural(p.items.length, ['слово', 'слова', 'слов']) +
@@ -1212,14 +1241,19 @@
         state.cfg.target = 'en';
         if (sel) sel.value = 'en';
         saveCfg();
-        toast('Обнаружен русский текст → переводим на English', 'ok', 1800);
+        if (!silent) toast('Обнаружен русский текст → переводим на English', 'ok', 1800);
       } else if (scr === 'en' && state.cfg.target === 'en') {
         state.cfg.target = 'ru';
         if (sel) sel.value = 'ru';
         saveCfg();
-        toast('Обнаружен английский текст → переводим на Русский', 'ok', 1800);
+        if (!silent) toast('Обнаружен английский текст → переводим на Русский', 'ok', 1800);
       }
-    }, 180);
+    };
+    if (silent) {
+      applyStats();
+    } else {
+      statTimer = setTimeout(applyStats, 180);
+    }
   }
 
   function plural(n, forms) {
