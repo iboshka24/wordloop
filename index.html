@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>WordLoop — бесконечный ИИ-тренажёр слов</title>
+  <meta name="description" content="Вставь слова или пары — ИИ отфильтрует, переведёт и соберёт бесконечный тренажёр: слово → вспоминаешь → не помнишь, жмёшь кнопку → переворот → цикл, пока не ливнёшь." />
+  <meta name="theme-color" content="#07070d" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%82%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <span class="blob b1"></span>
+    <span class="blob b2"></span>
+    <span class="blob b3"></span>
+    <div class="grid"></div>
+  </div>
+
+  <header class="topbar">
+    <a class="logo" href="#" id="logoHome" title="WordLoop — на главную">
+      <span class="logo-mark">↻</span>
+      <span class="logo-text">Word<em>Loop</em></span>
+    </a>
+    <div class="topbar-right">
+      <span class="pill" id="topPill" hidden></span>
+      <button class="icon-btn" id="btnSound" title="Звуки и озвучка (M)" aria-label="Включить / выключить звук">🔊</button>
+      <button class="icon-btn" id="btnSettings" title="Настройки API" aria-label="Настройки API">⚙</button>
+      <a class="icon-btn gh-link" href="https://github.com/iboshka24/wordloop" target="_blank" rel="noopener noreferrer" title="Репозиторий на GitHub" aria-label="GitHub">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ SETUP ============ -->
+    <section class="screen active" id="screen-setup">
+      <div class="hero">
+        <div class="hero-badge">✦ ИИ фильтрует · переводит · собирает бесконечный цикл</div>
+        <h1>Вставь слова.<br /><span class="grad">Получи бесконечный</span> тренажёр.</h1>
+        <p class="sub">Слово на карточке → вспоминаешь перевод → не вспомнил, жмёшь кнопку → переворачивается → снова в цикл. Работает бесконечно, пока сам не захочешь ливнуть.</p>
+      </div>
+
+      <div class="setup-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Твои слова</h2>
+            <div class="row-gap">
+              <button class="chip-btn" id="btnPaste" type="button">📋 Вставить из буфера</button>
+              <button class="chip-btn" id="btnClear" type="button">Очистить</button>
+            </div>
+          </div>
+
+          <div class="presets-row">
+            <span class="presets-label">Примеры:</span>
+            <button class="preset-chip" type="button" data-preset="verbs">🇬🇧 Глаголы</button>
+            <button class="preset-chip" type="button" data-preset="travel">✈️ Путешествия</button>
+            <button class="preset-chip" type="button" data-preset="it">💻 IT & Dev</button>
+            <button class="preset-chip" type="button" data-preset="advanced">💎 Продвинутые</button>
+          </div>
+
+          <textarea id="input" spellcheck="false" placeholder="Вставь слова или готовые пары:&#10;serendipity&#10;resilience&#10;to achieve&#10;apple - яблоко&#10;house : дом&#10;..."></textarea>
+
+          <div class="input-meta">
+            <span id="inputStat">0 слов</span>
+            <span id="inputStat2">по одному в строке, через запятую или готовые пары "слово - перевод"</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Настройки сессии</h2>
+            <span class="status-indicator" id="statusIndicator">● Готов к работе</span>
+          </div>
+
+          <label class="field">
+            <span>Переводить на язык</span>
+            <select id="targetLang"></select>
+          </label>
+
+          <div class="field">
+            <span>Направление карточек</span>
+            <div class="segmented" id="dirSeg">
+              <button type="button" data-dir="mixed" class="on">Смешанное</button>
+              <button type="button" data-dir="fwd">Слово → перевод</button>
+              <button type="button" data-dir="rev">Перевод → слово</button>
+            </div>
+          </div>
+
+          <details class="api-box" id="apiBox">
+            <summary>
+              <span>🔑 Настройки API (ИИ-провайдер)</span>
+              <span class="api-summary-status" id="apiSummaryStatus">Авто-режим</span>
+            </summary>
+            <div class="api-body">
+              <p class="hint" id="apiHint">
+                <strong>Ключ можно дать позже!</strong> Без ключа работает бесплатный авто-перевод. Для умных мнемоник и фильтрации подключи любой OpenAI-совместимый API (OpenAI, Groq, OpenRouter).
+              </p>
+
+              <div class="provider-row">
+                <span class="provider-title">Быстрый выбор:</span>
+                <button type="button" class="prov-chip active" data-prov="free">⚡ Бесплатно (без ключа)</button>
+                <button type="button" class="prov-chip" data-prov="openai">OpenAI</button>
+                <button type="button" class="prov-chip" data-prov="groq">Groq (супербыстро)</button>
+                <button type="button" class="prov-chip" data-prov="openrouter">OpenRouter</button>
+              </div>
+
+              <label class="field">
+                <span>Base URL</span>
+                <input id="cfgBaseUrl" type="text" placeholder="https://api.openai.com/v1" />
+              </label>
+
+              <label class="field">
+                <span>Модель</span>
+                <input id="cfgModel" type="text" placeholder="gpt-4o-mini" />
+              </label>
+
+              <label class="field">
+                <span>API ключ <em>(хранится только локально в твоём браузере)</em></span>
+                <input id="cfgKey" type="password" placeholder="sk-... (оставь пустым для авто-режима)" autocomplete="off" />
+              </label>
+
+              <div class="row-gap">
+                <button class="chip-btn" id="btnSaveCfg" type="button">Сохранить настройки</button>
+                <button class="chip-btn" id="btnResetCfg" type="button">Сбросить</button>
+              </div>
+            </div>
+          </details>
+
+          <div class="actions">
+            <button class="btn primary big" id="btnStart">🚀 Создать тренировку</button>
+            <button class="btn ghost" id="btnDemo" type="button">Демо-колода</button>
+          </div>
+          <p class="mini" id="resumeBox" hidden>Продолжить прошлую сессию — <button class="link" id="btnResume" type="button">открыть сохранённую колоду</button></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LOADING ============ -->
+    <section class="screen center" id="screen-loading">
+      <div class="loader-card panel">
+        <div class="spinner"><span></span><span></span><span></span></div>
+        <h2 id="loadTitle">ИИ разбирает твой список…</h2>
+        <p class="sub" id="loadStep">Фильтрую мусор и дубликаты</p>
+        <div class="bar"><i id="loadBar"></i></div>
+        <p class="mini" id="loadCount"></p>
+        <button class="btn ghost" id="btnCancel" type="button">Отмена</button>
+      </div>
+    </section>
+
+    <!-- ============ TRAIN ============ -->
+    <section class="screen" id="screen-train">
+      <div class="stats">
+        <div class="stat"><b id="stRound">1</b><span>раунд</span></div>
+        <div class="stat"><b id="stKnown">0</b><span>знал</span></div>
+        <div class="stat"><b id="stForgot">0</b><span>забыл</span></div>
+        <div class="stat"><b id="stAcc">—</b><span>точность</span></div>
+        <div class="stat"><b id="stTime">0:00</b><span>время</span></div>
+        <div class="stat"><b id="stLeft">0</b><span>в очереди</span></div>
+      </div>
+
+      <div class="stage">
+        <div class="card" id="card" tabindex="0" title="Нажми, чтобы перевернуть (Space)">
+          <div class="card-inner" id="cardInner">
+            <div class="card-face front">
+              <div class="card-header">
+                <span class="badge" id="cardBadge">оригинал</span>
+                <button class="speak-btn" id="btnSpeakFront" type="button" title="Озвучить слово (S)" aria-label="Озвучить">🔊</button>
+              </div>
+              <div class="card-word" id="cardWord">—</div>
+              <div class="card-sub" id="cardSub">вспомни перевод, потом переверни</div>
+            </div>
+            <div class="card-face back">
+              <div class="card-header">
+                <span class="badge alt" id="cardBadgeBack">перевод</span>
+                <button class="speak-btn" id="btnSpeakBack" type="button" title="Озвучить перевод (S)" aria-label="Озвучить">🔊</button>
+              </div>
+              <div class="card-word" id="cardTrans">—</div>
+              <div class="card-hint" id="cardHint"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hint-keys">
+          <span><kbd>Space</kbd> / <kbd>Enter</kbd> перевернуть</span>
+          <span><kbd>1</kbd> / <kbd>←</kbd> не помню</span>
+          <span><kbd>2</kbd> / <kbd>→</kbd> знал</span>
+          <span><kbd>S</kbd> озвучить</span>
+          <span><kbd>Esc</kbd> ливнуть</span>
+        </div>
+
+        <div class="answer-row" id="rowHidden">
+          <button class="btn primary big" id="btnReveal">👁 Показать перевод</button>
+          <button class="btn ghost" id="btnKnew">Сразу вспомнил →</button>
+        </div>
+
+        <div class="answer-row" id="rowShown" hidden>
+          <button class="btn danger big" id="btnForgot">✕ Не помню</button>
+          <button class="btn success big" id="btnKnew2">✓ Запомнил</button>
+        </div>
+
+        <div class="stage-tools">
+          <button class="chip-btn" id="btnSpeakCur" type="button" title="Озвучить (S)">🔊 Озвучить</button>
+          <button class="chip-btn" id="btnDirCycle" type="button">↻ Направление</button>
+          <button class="chip-btn" id="btnShuffle" type="button">⤨ Перемешать</button>
+          <button class="chip-btn" id="btnExit" type="button">Ливнуть ✕</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ SUMMARY ============ -->
+  <div class="overlay" id="summary" hidden>
+    <div class="panel summary-card">
+      <div class="emoji">🏁</div>
+      <h2>Сессия завершена</h2>
+      <div class="summary-grid" id="summaryGrid"></div>
+      <p class="sub" id="summaryMsg"></p>
+      <div class="actions">
+        <button class="btn primary" id="btnContinue">Ещё чуть-чуть (продолжить)</button>
+        <button class="btn ghost" id="btnNewSet">Новый набор слов</button>
+      </div>
+      <button class="link" id="btnCopyStats" type="button">Скопировать статистику</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
