@@ -858,9 +858,14 @@
     state.answers = 0;
     state.startedAt = 0;
     state.elapsed = 0;
-    state.cancelled = false;
+    state.cancelled = true;
 
-    // 4. Сброс UI индикаторов и карточек тренировки
+    // 4. Остановка озвучки речи при смене набора
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+
+    // 5. Сброс UI индикаторов и карточек тренировки
     var topPill = $('topPill');
     if (topPill) {
       topPill.hidden = true;
@@ -870,6 +875,7 @@
     if (card) {
       card.classList.remove('flipped', 'pop');
     }
+    updateRows();
     if ($('cardWord')) $('cardWord').textContent = '—';
     if ($('cardTrans')) $('cardTrans').textContent = '—';
     if ($('cardHint')) $('cardHint').textContent = '';
@@ -880,28 +886,37 @@
     if ($('stTime')) $('stTime').textContent = '0:00';
     if ($('stLeft')) $('stLeft').textContent = '0';
 
-    // 5. Очистка сохранённой сессии (так как пользователь начал новый набор)
+    // 6. Очистка сохранённой сессии (так как пользователь начал новый набор)
     try {
       localStorage.removeItem(SESSION_KEY);
     } catch (e) {}
     if ($('resumeBox')) $('resumeBox').hidden = true;
 
-    // 6. Переход на экран настройки
+    // 7. Переход на экран настройки
     show('screen-setup');
 
-    // 7. Сброс истории браузера при необходимости
+    // 8. Сброс истории браузера при необходимости
     try {
       if (window.history.state && window.history.state.screen === 'train') {
         window.history.replaceState({ screen: 'setup' }, '');
       }
     } catch (e) {}
 
-    // 8. Фокус на поле ввода для удобного ввода новых слов
+    // 9. Фокус и выделение поля ввода для удобного ввода новых слов (кросс-браузерно для десктопа и мобильных)
     var input = $('input');
     if (input) {
       input.focus();
-      input.select();
+      try {
+        if (typeof input.setSelectionRange === 'function') {
+          input.setSelectionRange(0, input.value.length);
+        } else {
+          input.select();
+        }
+      } catch (e) {
+        try { input.select(); } catch (e2) {}
+      }
     }
+    updateInputStat();
 
     toast('Введи или выбери новый набор слов ✍️', 'ok', 2200);
   }
