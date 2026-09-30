@@ -4,6 +4,7 @@
   "private": true,
   "description": "Bilingual AI flashcard loop: paste words → AI filters & translates → infinite recall loop.",
   "scripts": {
+    "test": "node test/suite.js",
     "dev": "npx --yes serve -l 3000 .",
     "start": "npx --yes serve -l 3000 ."
   },

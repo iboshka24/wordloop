@@ -47,13 +47,41 @@
   };
 
   var BUILTIN_DICT = {
+    // Presets - Verbs
+    'to achieve': 'достигать', 'to explore': 'исследовать', 'to overcome': 'преодолевать',
+    'to notice': 'замечать', 'to hesitate': 'колебаться', 'to encourage': 'поощрять',
+    'to maintain': 'поддерживать', 'to struggle': 'бороться', 'to appreciate': 'ценить',
+    'to distinguish': 'различать', 'to remember': 'помнить', 'to borrow': 'одалживать',
+    'to explain': 'объяснять', 'to waste': 'тратить впустую', 'to discover': 'открывать для себя',
+    'to improve': 'улучшать', 'to create': 'создавать', 'to develop': 'развивать',
+    // Presets - Travel
+    'boarding pass': 'посадочный талон', 'flight delay': 'задержка рейса',
+    'customs declaration': 'таможенная декларация', 'luggage claim': 'выдача багажа',
+    'round-trip ticket': 'билет туда и обратно', 'layover': 'пересадка',
+    'seatbelt': 'ремень безопасности', 'emergency exit': 'аварийный выход',
+    'currency exchange': 'обмен валюты', 'shuttle bus': 'трансферный автобус',
+    // Presets - IT
+    'refactoring': 'рефакторинг', 'pipeline': 'пайплайн / конвейер', 'deployment': 'развёртывание',
+    'latency': 'задержка отклика', 'concurrency': 'параллелизм', 'deadlock': 'взаимная блокировка',
+    'payload': 'полезная нагрузка', 'dependency': 'зависимость', 'throughput': 'пропускная способность',
+    'endpoint': 'конечная точка API', 'cache': 'кэш', 'database': 'база данных',
+    // Presets - Advanced
+    'serendipity': 'счастливая случайность', 'ephemeral': 'мимолётный', 'ubiquitous': 'вездесущий',
+    'resilience': 'стрессоустойчивость', 'eloquent': 'красноречивый', 'ambiguity': 'неоднозначность',
+    'tenacious': 'упорный / цепкий', 'profound': 'глубокий / фундаментальный',
+    'meticulous': 'скрупулёзный', 'pragmatic': 'прагматичный',
+    // Everyday words & bidirectional
     'hello': 'привет', 'world': 'мир', 'sunshine': 'солнечный свет', 'weather': 'погода',
-    'journey': 'путешествие', 'brave': 'храбрый', 'quiet': 'тихий', 'to achieve': 'достигать',
-    'to borrow': 'одалживать', 'narrow': 'узкий', 'to explain': 'объяснять', 'advice': 'совет',
-    'to waste': 'тратить впустую', 'deep': 'глубокий', 'to notice': 'замечать', 'to remember': 'помнить',
-    'apple': 'яблоко', 'house': 'дом', 'cat': 'кошка', 'dog': 'собака', 'car': 'машина',
-    'resilience': 'стрессоустойчивость', 'serendipity': 'счастливая случайность',
-    'ephemeral': 'мимолётный', 'ubiquitous': 'вездесущий', 'eloquent': 'красноречивый'
+    'journey': 'путешествие', 'brave': 'храбрый', 'quiet': 'тихий', 'narrow': 'узкий',
+    'advice': 'совет', 'deep': 'глубокий', 'apple': 'яблоко', 'house': 'дом',
+    'cat': 'кошка', 'dog': 'собака', 'car': 'машина', 'book': 'книга', 'friend': 'друг',
+    'water': 'вода', 'city': 'город', 'street': 'улица', 'time': 'время', 'life': 'жизнь',
+    'work': 'работа', 'study': 'учёба', 'success': 'успех', 'dream': 'мечта', 'freedom': 'свобода',
+    // Russian to English
+    'привет': 'hello', 'мир': 'world', 'погода': 'weather', 'путешествие': 'journey',
+    'храбрый': 'brave', 'тихий': 'quiet', 'достигать': 'to achieve', 'совет': 'advice',
+    'яблоко': 'apple', 'дом': 'house', 'кошка': 'cat', 'собака': 'dog', 'машина': 'car',
+    'книга': 'book', 'друг': 'friend', 'вода': 'water', 'город': 'city', 'успех': 'success'
   };
 
   var CFG_KEY = 'wordloop.cfg';
@@ -68,12 +96,12 @@
     soundEnabled: true,
     cancelled: false,
     cards: [],
-    queue: [],
+    roundQueue: [],
+    roundTotal: 0,
     current: null,
     curSide: 'fwd',
     revealed: false,
     round: 1,
-    passLeft: 0,
     known: 0,
     forgot: 0,
     answers: 0,
@@ -215,36 +243,64 @@
 
   /* ---------------- pre-filter & pair parser ---------------- */
 
-  var PAIR_REGEX = /\s*[:=]\s+|\s+[-—–]\s+|\t+/;
+  function detectScript(text) {
+    var cyr = (text.match(/[\u0400-\u04FF]/g) || []).length;
+    var lat = (text.match(/[a-zA-Z]/g) || []).length;
+    if (cyr > lat && cyr >= 2) return 'ru';
+    if (lat > cyr && lat >= 2) return 'en';
+    return null;
+  }
 
   function parseInput(text) {
-    var lines = String(text || '').split(/[\n\r,;|•]+/);
+    var rawLines = String(text || '').split(/\r?\n/);
     var seen = Object.create(null);
     var items = [];
     var dropped = 0;
 
-    for (var i = 0; i < lines.length; i++) {
-      var raw = lines[i].replace(/^\s*[-*–—]?\s*[\d.)]+\s*/, '').replace(/\s+/g, ' ').trim();
+    for (var i = 0; i < rawLines.length; i++) {
+      var raw = rawLines[i].replace(/^\s*(?:[-*•–—]|\d+[.)])+\s*/, '').trim();
       if (!raw) continue;
-      if (!/[\p{L}]/u.test(raw)) { dropped++; continue; }
-      if (/^https?:\/\/\S+$/i.test(raw) || /[\w.]+@[\w.]+/.test(raw)) { dropped++; continue; }
-      if (raw.length > 180) { dropped++; continue; }
+      if (/^https?:\/\//i.test(raw) || /[\w.]+@[\w.]+/.test(raw) || /^\d+$/.test(raw)) {
+        dropped++;
+        continue;
+      }
 
-      // Check if line contains a delimiter: "word - translation"
-      var pair = raw.split(PAIR_REGEX);
-      if (pair.length >= 2 && pair[0].trim() && pair[1].trim()) {
-        var orig = pair[0].trim();
-        var trans = pair.slice(1).join(' ').trim();
-        var k = orig.toLowerCase();
-        if (seen[k]) { dropped++; continue; }
-        seen[k] = 1;
-        items.push({ original: orig, translation: trans, hint: '', pretranslated: true });
-      } else {
-        var single = raw.trim();
-        var k2 = single.toLowerCase();
-        if (seen[k2]) { dropped++; continue; }
-        seen[k2] = 1;
-        items.push({ original: single, translation: '', hint: '', pretranslated: false });
+      // Check if line contains multiple pairs separated by commas: e.g. "apple - яблоко, cat - кошка"
+      var subPairs = raw.split(/,\s*(?=[^\s,]+(?:\s+[^\s,]+)*\s*(?:[:=]|\s+[-—–]\s+|\t+)\s*)/);
+
+      for (var p = 0; p < subPairs.length; p++) {
+        var chunk = subPairs[p].trim();
+        if (!chunk) continue;
+
+        // Check for single pair delimiter: - — – : = \t
+        var pairMatch = chunk.match(/^([^\s:=].*?)\s*(?:[:=]|\s+[-—–]\s+|\t+)\s*(.+)$/);
+        if (pairMatch && pairMatch[1].trim() && pairMatch[2].trim()) {
+          var orig = pairMatch[1].trim();
+          var trans = pairMatch[2].trim();
+          if (!/[\p{L}]/u.test(orig) || /^https?:\/\//i.test(orig) || orig.length > 180) {
+            dropped++;
+            continue;
+          }
+          var k = orig.toLowerCase();
+          if (seen[k]) { dropped++; continue; }
+          seen[k] = 1;
+          items.push({ original: orig, translation: trans, hint: '', pretranslated: true });
+        } else {
+          // Line without pair delimiter: split by commas / semicolons / bullets
+          var parts = chunk.split(/[,;•]+/);
+          for (var j = 0; j < parts.length; j++) {
+            var single = parts[j].trim();
+            if (!single) continue;
+            if (!/[\p{L}]/u.test(single) || /^https?:\/\//i.test(single) || /[\w.]+@[\w.]+/.test(single) || single.length > 180) {
+              dropped++;
+              continue;
+            }
+            var k2 = single.toLowerCase();
+            if (seen[k2]) { dropped++; continue; }
+            seen[k2] = 1;
+            items.push({ original: single, translation: '', hint: '', pretranslated: false });
+          }
+        }
       }
     }
     return { items: items, dropped: dropped };
@@ -342,15 +398,25 @@
   }
 
   async function callAI(messages) {
-    var body = JSON.stringify({ messages: messages, model: state.cfg.model, temperature: 0.2 });
+    var bodyObj = {
+      messages: messages,
+      model: state.cfg.model,
+      baseUrl: state.cfg.baseUrl,
+      apiKey: state.cfg.apiKey,
+      temperature: 0.2
+    };
 
-    /* 1) Прокси на Vercel (серверный ключ) */
+    /* 1) Прокси на Vercel (серверный ключ или проксирование браузерного ключа) */
     if (state.serverAvailable) {
       try {
+        var headers = { 'Content-Type': 'application/json' };
+        if (state.cfg.apiKey) {
+          headers['Authorization'] = 'Bearer ' + state.cfg.apiKey;
+        }
         var r = await fetch('/api/ai', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: body
+          headers: headers,
+          body: JSON.stringify(bodyObj)
         });
         if (r.ok) {
           var j = await r.json();
@@ -371,7 +437,7 @@
       }
     }
 
-    /* 2) Напрямую по ключу пользователя */
+    /* 2) Напрямую по ключу пользователя в браузере (если прокси не доступен, e.g. локальный сервер) */
     var cfg = state.cfg;
     if (cfg.apiKey) {
       var url = String(cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '') + '/chat/completions';
@@ -401,21 +467,48 @@
     if (targetCode === 'ru' && BUILTIN_DICT[lower]) {
       return BUILTIN_DICT[lower];
     }
-    try {
-      var isCyrillic = /[а-яё]/i.test(word);
-      var srcCode = isCyrillic ? 'ru' : 'en';
-      var pair = srcCode + '|' + (targetCode || 'ru');
-      var url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(word) + '&langpair=' + pair;
-      var res = await fetch(url);
-      if (res.ok) {
-        var json = await res.json();
-        if (json && json.responseData && json.responseData.translatedText) {
-          var t = json.responseData.translatedText.trim();
-          // Filter out identical or noisy matches
-          if (t && t.toLowerCase() !== lower) return t;
+    if (targetCode === 'en' && BUILTIN_DICT[lower]) {
+      return BUILTIN_DICT[lower];
+    }
+
+    var isCyrillic = /[а-яё]/i.test(word);
+    var srcCode = isCyrillic ? 'ru' : 'en';
+    var tgtCode = targetCode || (isCyrillic ? 'en' : 'ru');
+    if (srcCode === tgtCode) {
+      tgtCode = isCyrillic ? 'en' : 'ru';
+    }
+
+    var pairsToTry = [srcCode + '|' + tgtCode, 'autodetect|' + tgtCode];
+
+    for (var i = 0; i < pairsToTry.length; i++) {
+      try {
+        var url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(word) + '&langpair=' + pairsToTry[i];
+        var res = await fetch(url);
+        if (res.ok) {
+          var json = await res.json();
+          if (json) {
+            var candidates = [];
+            if (json.responseData && json.responseData.translatedText) {
+              candidates.push({ text: json.responseData.translatedText.trim(), quality: Number(json.responseData.match || 0) * 100 });
+            }
+            if (Array.isArray(json.matches)) {
+              json.matches.forEach(function (m) {
+                if (m && m.translation) candidates.push({ text: m.translation.trim(), quality: Number(m.quality || 0) });
+              });
+            }
+            candidates.sort(function (a, b) { return b.quality - a.quality; });
+
+            for (var c = 0; c < candidates.length; c++) {
+              var t = candidates[c].text;
+              if (!t) continue;
+              if (t.toLowerCase() === lower) continue;
+              if (/PLEASE SELECT TWO|MYMEMORY WARNING|NO QUERY SPECIFIED|HTML tags/i.test(t)) continue;
+              return t;
+            }
+          }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
     return BUILTIN_DICT[lower] || '—';
   }
 
@@ -437,7 +530,7 @@
         hint: 'ассоциация: ' + item.original
       });
       // Small pause to be gentle on free API
-      if (i < total - 1) await new Promise(function (r) { setTimeout(r, 90); });
+      if (i < total - 1) await new Promise(function (r) { setTimeout(r, 70); });
     }
     return out;
   }
@@ -483,14 +576,28 @@
             { role: 'user', content: numbered(parts[i]) }
           ]);
           var parsed = parseItems(text);
-          var got = Object.create(null);
-          parsed.forEach(function (p) { got[p.original.toLowerCase()] = p; });
-
-          parts[i].forEach(function (src) {
-            var p = got[src.original.toLowerCase()];
-            if (p) aiCards.push({ original: p.original, translation: p.translation || '—', hint: p.hint || '' });
-            else aiCards.push({ original: src.original, translation: '—', hint: '' });
-          });
+          if (parsed && parsed.length > 0) {
+            // Use AI filtered and translated items directly
+            for (var pIdx = 0; pIdx < parsed.length; pIdx++) {
+              var pItem = parsed[pIdx];
+              var tr = pItem.translation;
+              if (!tr || tr === '—') {
+                tr = await translateSingleFree(pItem.original, state.cfg.target);
+              }
+              aiCards.push({
+                original: pItem.original,
+                translation: tr || '—',
+                hint: pItem.hint || ''
+              });
+            }
+          } else {
+            // Fallback for this chunk if AI returned empty
+            for (var sIdx = 0; sIdx < parts[i].length; sIdx++) {
+              var src = parts[i][sIdx];
+              var freeTr = await translateSingleFree(src.original, state.cfg.target);
+              aiCards.push({ original: src.original, translation: freeTr, hint: '' });
+            }
+          }
         }
         return readyCards.concat(aiCards);
       } catch (err) {
@@ -538,13 +645,17 @@
     state.cards = cards.map(function (c, i) {
       return { id: i, original: c.original, translation: c.translation, hint: c.hint || '', streak: 0, fails: 0 };
     });
-    state.queue = shuffle(state.cards.map(function (c) { return c.id; }));
+    state.roundQueue = shuffle(state.cards.map(function (c) { return c.id; }));
+    state.roundTotal = state.cards.length;
     state.current = null;
     state.revealed = false;
     state.round = resume ? (resume.round || 1) : 1;
-    state.passLeft = state.cards.length;
     state.known = 0; state.forgot = 0; state.answers = 0;
     state.startedAt = Date.now(); state.elapsed = 0;
+
+    try {
+      window.history.pushState({ screen: 'train' }, '');
+    } catch (e) {}
 
     show('screen-train');
     $('topPill').hidden = false;
@@ -556,19 +667,19 @@
   }
 
   function nextCard(first) {
-    if (state.passLeft <= 0) {
+    if (!state.roundQueue.length) {
       state.round++;
-      state.passLeft = state.cards.length;
-      // В новом раунде забытые слова выходят первыми
-      state.queue.sort(function (a, b) {
-        return (state.cards[b].fails - state.cards[a].fails) || (Math.random() - 0.5);
+      // В новом раунде забытые/сложные слова идут первыми
+      var sorted = state.cards.slice().sort(function (a, b) {
+        return (b.fails - a.fails) || (Math.random() - 0.5);
       });
-      toast('Раунд ' + state.round + ' 🔁 Забытые слова идут первыми!', 'ok', 2500);
+      state.roundQueue = sorted.map(function (c) { return c.id; });
+      state.roundTotal = state.cards.length;
+      toast('Раунд ' + state.round + ' 🔁 Закрепляем: сложные слова в начале!', 'ok', 2600);
       playSuccessSound();
     }
 
-    if (!state.queue.length) state.queue = shuffle(state.cards.map(function (c) { return c.id; }));
-    state.current = state.cards[state.queue.shift()];
+    state.current = state.cards[state.roundQueue.shift()];
     state.revealed = false;
 
     if (state.cfg.dir === 'mixed') state.curSide = Math.random() < 0.5 ? 'fwd' : 'rev';
@@ -635,16 +746,16 @@
       state.known++;
       c.streak++;
       playSuccessSound();
+      // Карточка успешно закреплена в этом раунде
     } else {
       state.forgot++;
       c.streak = 0;
       c.fails++;
       playForgotSound();
+      // Повторяем забытое слово через 2-3 карточки в текущем раунде
+      var insertPos = Math.min(state.roundQueue.length, 3);
+      state.roundQueue.splice(insertPos, 0, c.id);
     }
-
-    var delay = knew ? Math.min(6, 2 + c.streak * 2) : 1;
-    state.queue.splice(Math.min(state.queue.length, delay), 0, c.id);
-    state.passLeft--;
 
     state.revealed = false;
     $('card').classList.remove('flipped');
@@ -657,7 +768,7 @@
     $('stKnown').textContent = state.known;
     $('stForgot').textContent = state.forgot;
     $('stAcc').textContent = state.answers ? Math.round((state.known / state.answers) * 100) + '%' : '—';
-    $('stLeft').textContent = state.queue.length + (state.current ? 1 : 0);
+    $('stLeft').textContent = state.roundQueue.length + (state.current ? 1 : 0);
   }
 
   function fmtTime(sec) {
@@ -909,7 +1020,7 @@
     $('btnExit').addEventListener('click', showSummary);
 
     $('btnShuffle').addEventListener('click', function () {
-      shuffle(state.queue);
+      shuffle(state.roundQueue);
       toast('Очередь перемешана ⤨', 'ok', 1400);
       renderStats();
     });
@@ -965,6 +1076,12 @@
         hideSummary();
       }
     });
+
+    window.addEventListener('popstate', function () {
+      if ($('screen-train').classList.contains('active')) {
+        showSummary();
+      }
+    });
   }
 
   function setDir(dir) {
@@ -979,9 +1096,25 @@
   function updateInputStat() {
     clearTimeout(statTimer);
     statTimer = setTimeout(function () {
-      var p = parseInput($('input').value);
+      var val = $('input').value;
+      var p = parseInput(val);
       $('inputStat').textContent = p.items.length + ' ' + plural(p.items.length, ['слово', 'слова', 'слов']) +
         (p.dropped ? ' · отброшено ' + p.dropped : '');
+
+      // Smart target language switch on Cyrillic/Latin script detection
+      var scr = detectScript(val);
+      var sel = $('targetLang');
+      if (scr === 'ru' && state.cfg.target === 'ru') {
+        state.cfg.target = 'en';
+        if (sel) sel.value = 'en';
+        saveCfg();
+        toast('Обнаружен русский текст → переводим на English', 'ok', 1800);
+      } else if (scr === 'en' && state.cfg.target === 'en') {
+        state.cfg.target = 'ru';
+        if (sel) sel.value = 'ru';
+        saveCfg();
+        toast('Обнаружен английский текст → переводим на Русский', 'ok', 1800);
+      }
     }, 180);
   }
 

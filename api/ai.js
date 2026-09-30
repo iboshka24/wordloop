@@ -21,10 +21,12 @@ module.exports = async (req, res) => {
 
   // Health / status probe
   if (req.method === 'GET') {
+    const base = (process.env.OPENAI_BASE_URL || DEFAULT_BASE).replace(/\/+$/, '');
+    const model = process.env.OPENAI_MODEL || (/tokenharbor/i.test(base) ? 'claude-sonnet-4.6' : 'gpt-4o-mini');
     return res.status(200).json({
       status: 'ok',
       serverKeyConfigured: Boolean(process.env.OPENAI_API_KEY),
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
+      model
     });
   }
 
@@ -33,36 +35,49 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const key = process.env.OPENAI_API_KEY;
+  const body = typeof req.body === 'string' ? safeParse(req.body) : (req.body || {});
+  const authHeader = req.headers.authorization || '';
+  const clientBearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const bodyKey = (body && typeof body.apiKey === 'string') ? body.apiKey.trim() : '';
+  const key = process.env.OPENAI_API_KEY || clientBearer || bodyKey;
+
   if (!key) {
     return res.status(501).json({
       code: 'no-key',
-      error: 'OPENAI_API_KEY не задан в переменных окружения Vercel.'
+      error: 'OPENAI_API_KEY не задан в переменных окружения Vercel и не передан из браузера.'
     });
   }
 
-  const body = typeof req.body === 'string' ? safeParse(req.body) : (req.body || {});
   const messages = Array.isArray(body.messages) ? body.messages : null;
 
   if (!messages || !messages.length) {
     return res.status(400).json({ code: 'bad-request', error: 'Нужен массив messages.' });
   }
 
-  const base = (process.env.OPENAI_BASE_URL || DEFAULT_BASE).replace(/\/+$/, '');
-  const model = process.env.OPENAI_MODEL || (typeof body.model === 'string' && body.model.trim()) || 'gpt-4o-mini';
+  const base = (body.baseUrl || process.env.OPENAI_BASE_URL || DEFAULT_BASE).replace(/\/+$/, '');
+  const defaultModel = process.env.OPENAI_MODEL || (/tokenharbor/i.test(base) ? 'claude-sonnet-4.6' : 'gpt-4o-mini');
+  const model = (typeof body.model === 'string' && body.model.trim()) || defaultModel;
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + key
+  };
+
+  if (/openrouter\.ai/i.test(base)) {
+    headers['HTTP-Referer'] = 'https://wordloop.vercel.app';
+    headers['X-Title'] = 'WordLoop Flashcards';
+  }
 
   try {
     const upstream = await fetch(base + '/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + key
-      },
+      headers,
       body: JSON.stringify({
         model,
         messages,
         temperature: typeof body.temperature === 'number' ? body.temperature : 0.2
-      })
+      }),
+      signal: AbortSignal.timeout(30000)
     });
 
     const text = await upstream.text();
